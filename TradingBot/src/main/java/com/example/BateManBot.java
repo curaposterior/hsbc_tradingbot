@@ -38,27 +38,6 @@ public class BateManBot implements Runnable {
         return null;
     }
 
-    public void buyInstrument(Portfolio p, Instrument i, long qty, long price) {
-        platform.submit(new SubmitOrderRequest.Buy(
-                i.symbol(), UUID.randomUUID().toString(), qty, price
-        ));
-    }
-
-    public void sellInstrument(Portfolio p,Instrument i, long qty, long price) {
-
-        for (var iter: p.portfolio()) {
-            if (iter.instrument().symbol().equals(i.symbol())) {
-                if (iter.qty() > 0 && iter.qty()-qty > 0) {
-                    var x = platform.submit(new SubmitOrderRequest.Sell(
-                            i.symbol(), UUID.randomUUID().toString(), qty, price
-                    ));
-                    logger.info("{}", x);
-                    return;
-                }
-            }
-        }
-    }
-
     public long getCash() {
         var sub = platform.portfolio();
         switch (sub) {
@@ -72,6 +51,29 @@ public class BateManBot implements Runnable {
 
         logger.info("{}", sub);
         return 0;
+    }
+
+    public InstrumentsResponse.Instruments getInstruments() {
+        var req = platform.instruments();
+        switch (req) {
+            case InstrumentsResponse.Instruments x -> {
+                return x;
+            }
+            case InstrumentsResponse.Other y -> {
+                logger.info("{}", y);
+            }
+        }
+        return null;
+    }
+
+    public int countToBuy() {
+        PortfolioResponse.Portfolio p = getPortfolio();
+        return p.toBuy().size();
+    }
+
+    public int countToSell() {
+        PortfolioResponse.Portfolio p = getPortfolio();
+        return p.toSell().size();
     }
 
     public Map<String, Long> getPortfolioInstruments() {
@@ -90,8 +92,42 @@ public class BateManBot implements Runnable {
         return listOfInstruments;
     }
 
-    public Long calculateSMA(List<Long> input) {
-        Long sum = 0L;
+    public void sellInstrment(Instrument i, Long qty, Long price) {
+        var s = platform.submit(new SubmitOrderRequest.Sell(
+                i.symbol(), UUID.randomUUID().toString(), qty, price)
+        );
+        switch (s) {
+            case SubmitOrderResponse.Acknowledged ack -> {
+                logger.info("{}", ack);
+            }
+            case SubmitOrderResponse.Rejected rej -> {
+                logger.info("{}", rej.becauseOf());
+            }
+            case SubmitOrderResponse.Other oth -> {
+                logger.info("{}", oth.restResponse());
+            }
+        }
+    }
+
+    public void buyInstrument(Instrument i, Long qty, Long price) {
+        var s = platform.submit(new SubmitOrderRequest.Buy(
+                i.symbol(), UUID.randomUUID().toString(), qty, price)
+        );
+        switch (s) {
+            case SubmitOrderResponse.Acknowledged ack -> {
+                logger.info("{}", ack);
+            }
+            case SubmitOrderResponse.Rejected rej -> {
+                logger.info("{}", rej.becauseOf());
+            }
+            case SubmitOrderResponse.Other oth -> {
+                logger.info("{}", oth.restResponse());
+            }
+        }
+    }
+
+    public double calculateSMA(List<Long> input) {
+        double sum = 0;
         if (input.isEmpty()) {
             return 0L;
         }
@@ -101,9 +137,9 @@ public class BateManBot implements Runnable {
         return sum/input.size();
     }
 
-    public Long calculateEMA(List<Long> input) {
+    public double calculateEMA(List<Long> input) {
         if (input.isEmpty()) {
-            return 0L;
+            return 0;
         }
 
         int period = input.size();
@@ -116,7 +152,8 @@ public class BateManBot implements Runnable {
             ema = (currentPrice - ema) * multiplier + ema;
         }
 
-        return Math.round(ema);
+//        return Math.round(ema);
+        return ema;
     }
 
     public void strategy(Instrument ins) { //EMA AND SMA
@@ -124,10 +161,8 @@ public class BateManBot implements Runnable {
         switch (respon) {
             case HistoryResponse.History x -> {
                 // historical data
-//                logger.info("{}", x.bought());
-//                logger.info("{}", x.sold());
                 Instant currentTime = Instant.now();
-                Instant startTime = currentTime.minus(Duration.ofMinutes(20));
+                Instant startTime = currentTime.minus(Duration.ofMinutes(40));
 
                 List<Long> bought_prices = new ArrayList<Long>();
                 List<Long> sold_prices = new ArrayList<Long>();
@@ -143,41 +178,24 @@ public class BateManBot implements Runnable {
                     }
                 }
 
-                //streamy, zsumowanie wartosci, mozna dodawac warunki orElse, wiele innych przydatnych metod
-//                final DoubleStream sumStream = x
-//                        .bought()
-//                        .stream()
-//                        .mapToLong(bought -> bought.offer().price()).average().stream().map();
 
                 logger.info("sold_prices ({}), {}", ins.symbol(), sold_prices);
-                logger.info("bought_prices ({}), {}", ins.symbol(), bought_prices);
+//                logger.info("bought_prices ({}), {}", ins.symbol(), bought_prices);
 
-                if (!sold_prices.isEmpty() && !bought_prices.isEmpty() && sold_prices.size() > 20) {
-                    Long min_buy = Collections.min(sold_prices);
-                    Long SMA = calculateSMA(sold_prices);
-                    Long EMA = calculateEMA(sold_prices);
-                    logger.info("SMA, EMA: {} {}", SMA, EMA);
-                    if (EMA > SMA) { //kupowac
+                if (!sold_prices.isEmpty() && !bought_prices.isEmpty() && bought_prices.size() > 20) {
+                    Long min_buy = Collections.min(bought_prices);
+                    double SMA = calculateSMA(sold_prices);
+                    double EMA = calculateEMA(sold_prices);
+                    logger.info("{}, SMA, EMA: {} {}", ins.symbol(), SMA, EMA);
+                    if (EMA > SMA && getCash() > 80000 && countToBuy() <= 20) { //kupowac
                         logger.info("BUY: {}", ins.symbol());
-//                        var s = platform.submit(
-//                                        new SubmitOrderRequest.Buy(ins.symbol(),
-//                                        UUID.randomUUID().toString(),
-//                                    20,
-//                                        min_buy));
-//                        switch (s) {
-//                            case SubmitOrderResponse.Acknowledged ack -> {
-//                                logger.info("{}", ack);
-//                            }
-//                            case SubmitOrderResponse.Rejected rej -> {
-//                                logger.info("{}", rej.becauseOf());
-//                            }
-//                            case SubmitOrderResponse.Other oth -> {
-//                                logger.info("{}", oth.restResponse());
-//                            }
-//                        }
+//                        buyInstrument(ins, 5L, (long) (SMA*0.9));
+                        buyInstrument(ins, 5L, (long) (SMA));
                     }
-                    else if (EMA < SMA) { //sprzedawac
-                        logger.info("SELL {}", ins.symbol());
+                    else if (EMA < SMA && countToSell() <= 60) { //sprzedawac
+                        logger.info("SELL: {}", ins.symbol());
+//                        sellInstrment(ins, 8L, Integer.toUnsignedLong(Math.toIntExact((long) (SMA*1.1))));
+                        sellInstrment(ins, 8L, Integer.toUnsignedLong(Math.toIntExact((long) (min_buy))));
                     }
                 }
             }
@@ -194,8 +212,6 @@ public class BateManBot implements Runnable {
 //        Map<String, Long> avaliableInstruments = getPortfolioInstruments();
         logger.info("{}", getCash());
         var p = platform.portfolio(); //obiekt portfolio
-//        logger.info("{}", getPortfolio());
-
         switch (p) {
             case PortfolioResponse.Portfolio port -> {
                 for (Portfolio.Element elem: port.portfolio())  {
@@ -206,6 +222,10 @@ public class BateManBot implements Runnable {
                 logger.info("{}", xd.restResponse());
             }
         }
+//        InstrumentsResponse.Instruments ins = getInstruments();
+//        for (var item: ins.available()) {
+//            strategy(new Instrument(item.symbol()));
+//        }
 
 
 //        strategy(new Instrument("YOLO"));
