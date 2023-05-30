@@ -152,7 +152,6 @@ public class BateManBot implements Runnable {
             ema = (currentPrice - ema) * multiplier + ema;
         }
 
-//        return Math.round(ema);
         return ema;
     }
 
@@ -207,11 +206,10 @@ public class BateManBot implements Runnable {
 
     @Override
     public void run() {
-//        SubmittedResponse.Submitted s = Test();
         long avaliableCash = getCash();
-//        Map<String, Long> avaliableInstruments = getPortfolioInstruments();
+
         logger.info("{}", getCash());
-        var p = platform.portfolio(); //obiekt portfolio
+        var p = platform.portfolio();
         switch (p) {
             case PortfolioResponse.Portfolio port -> {
                 for (Portfolio.Element elem: port.portfolio())  {
@@ -222,21 +220,12 @@ public class BateManBot implements Runnable {
                 logger.info("{}", xd.restResponse());
             }
         }
+        // iterate through all the instruments
 //        InstrumentsResponse.Instruments ins = getInstruments();
 //        for (var item: ins.available()) {
 //            strategy(new Instrument(item.symbol()));
 //        }
 
-
-//        strategy(new Instrument("YOLO"));
         logger.info("RUNNING");
-
-
-
-//        buyInstrument(p, new Instrument("4FUNMEDIA"), 1, 100);
-//        for (var iter: p.portfolio()) {
-//            logger.info("{}", iter.instrument());
-//            sellInstrument(p, iter.instrument(), 1, 105);
-//        }
     }
 }
